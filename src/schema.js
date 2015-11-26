@@ -210,7 +210,14 @@ var addStructureDefinition = function(schema, structureDefinition){
     schema.definitions = schema.definitions || {}
     var resourceSchema = sd.properties[rt]
     if(resourceSchema && resourceSchema.properties) {
-        resourceSchema.properties.resourceType = {type: 'string'}
+        var resourceType = structureDefinition
+            .snapshot
+            .element[0].path;
+
+        resourceSchema.properties.resourceType = {
+            type: 'string',
+            pattern: '^' + resourceType + '$'
+        };
     }
     schema.definitions[rt] = resourceSchema;
     return schema;
