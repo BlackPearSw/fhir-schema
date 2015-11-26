@@ -224,7 +224,95 @@ var addStructureDefinition = function(schema, structureDefinition){
 }
 
 var addValueSet = function(schema, valueSet){
-}
+
+    function isInlineCodeSystem(valueSet) {
+        if (valueSet.compose) return false;
+        return valueSet.codeSystem !== undefined;
+    }
+
+    function expandConcepts(valueSet) {
+        function addCodesToExpansion(expansion, concept) {
+            expansion.push({
+                system: valueSet.codeSystem.system, //TODO
+                code: concept.code
+            });
+
+            if (concept.concept) {
+                expansion = expand(concept.concept, expansion);
+            }
+
+            return expansion;
+        }
+
+        function expand(concept, expansion) {
+            return concept.reduce(addCodesToExpansion, expansion);
+        }
+
+        return expand(valueSet.codeSystem.concept, []);
+    }
+
+    function inlineCodeSystemForCode(valueSet) {
+        var codeSchema = {};
+        codeSchema.type = 'string';
+        codeSchema.enum = expandConcepts(valueSet).map(function (concept) {
+            return concept.code;
+        });
+        return codeSchema;
+    }
+
+    function inlineCodeSystemForCodeableConcept(valueSet) {
+        var concepts = expandConcepts(valueSet);
+        var ccSchema = {
+            type: 'object',
+            required: ['coding'],
+            properties: {
+                coding: {
+                    type: 'array',
+                    minItems: 1,
+                    items: [
+                        {
+                            oneOf: concepts.map(function(item){
+                                return {
+                                    type: 'object',
+                                    required: ['system', 'code'],
+                                    properties: {
+                                        system: {
+                                            type: 'string',
+                                            pattern:  '^' + item.system + '$'
+                                        },
+                                        code: {
+                                            type: 'string',
+                                            pattern: '^' + item.code + '$'
+                                        }
+                                    }
+                                }
+                            })
+                        }
+                    ],
+                    additionalItems: true
+                }
+            }
+
+        };
+
+        return ccSchema;
+    }
+
+    var url = valueSet.url;
+    var valueSetSchema = {
+        id: url
+    };
+
+    if (isInlineCodeSystem(valueSet)){
+        valueSetSchema.oneOf = [];
+        valueSetSchema.oneOf.push(inlineCodeSystemForCode(valueSet));
+        valueSetSchema.oneOf.push(inlineCodeSystemForCodeableConcept(valueSet));
+    }
+
+    schema.definitions = schema.definitions || {};
+    schema.definitions[url] = valueSetSchema;
+    return schema;
+};
 
 exports.addToSchema = function(schema, resource){
     var rt = resource.resourceType 
